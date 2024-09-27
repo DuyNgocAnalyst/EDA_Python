@@ -1,0 +1,418 @@
+import plotly.io as pio
+import plotly.express as px
+import plotly.offline as py
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+import seaborn as sns
+sns.set(rc={'figure.figsize':(6, 4)})
+import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+import squarify
+
+from scipy import stats
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report
+
+from imblearn.over_sampling import SMOTE
+
+loan_data = pd.read_csv('data/Data_Loan.csv')
+loan_data.head()
+
+loan_data.info()
+
+miss = loan_data.isna().sum()
+miss = miss[miss>0]
+print(f"Các dữ liệu thiếu:\n{miss}")
+print(f"Số lượng cột có dữ liệu thiếu {len(miss)}")
+
+    def hist_RF(data='Income'):
+#     with wOut0:
+#         wOut0.clear_output()
+        fig = plt.figure(figsize=(12,10))
+        ax1 = fig.add_subplot(2,2,1)
+        ax2 = fig.add_subplot(2,2,2)
+        sns.set_theme(context='talk', style='white', palette='tab10')
+        sns.histplot(data=loan_data, x=data, hue='Risk_Flag', bins=50, multiple="stack", ax=ax1)
+        sns.kdeplot(data=loan_data, x=data, hue='Risk_Flag', shade=True, ax=ax2)
+        plt.tight_layout()
+        plt.show()
+        
+
+
+wLabel0 = widgets.Label(value='Phân bố dạng histogram của data dựa trên Risk-Flag')
+display(wLabel0)
+wRB = widgets.RadioButtons(options=['Age','Income','Experience','CURRENT_JOB_YRS'])
+# wOut0 = widgets.Output(layout={'border': '1px solid black'})
+# wKQ = widgets.interact(hist_RF, data=wRB)
+# display(wOut0)
+
+def button_click(bc):
+    clear_output()
+    display(widgets.HBox([wRB, bc]))
+    hist_RF(wRB.value)
+
+bc = widgets.Button(description='Draw', icon='check', button_style='danger')
+bc.on_click(button_click)
+display(widgets.HBox([wRB, bc]))
+
+pro_RF = pd.DataFrame(data=loan_data.groupby(['Risk_Flag','Profession'])['Risk_Flag'].count().sort_values(ascending=False))
+pro_RF.columns = ['counts']
+pro_RF = pro_RF.reset_index()
+def top_profession(N=10):
+    profession = pd.DataFrame(data=loan_data['Profession'].value_counts().reset_index())
+    profession.columns = ['Jobs','counts']
+    profession = profession[0:N]
+#     fig = plt.figure(figsize=(15,4))
+#     ax = fig.add_subplot(1,1,1)
+#     squarify.plot(sizes=profession['counts'],label=profession['Jobs'],ax=ax, color=sns.color_palette("Paired")
+#         )
+#     plt.show()
+    
+    parent = []
+    for i in range(len(profession['counts'])):
+        parent.append("Top loan profession")
+  
+    fig1 = px.treemap(
+        names = profession['Jobs'],
+        parents = parent,
+        values = profession['counts'],
+        )
+    fig1.update_traces(root_color="tomato")
+    fig1.update_layout(margin = dict(t=50, l=25, r=25, b=25))
+    fig1.show()
+    
+    fig = make_subplots(rows=1, cols=2, 
+                        subplot_titles=("Top Risk Profession", "Top Non-Risk Profession"), 
+                        column_widths=[0.6, 0.4],
+                        specs=[[{"type": "xy"}, {"type": "xy"}]]
+                       )
+    Bar_risk = go.Bar(x=pro_RF[51:51+N]['Profession'], y =pro_RF[51:51+N]['counts'],
+                         width=0.5,showlegend=False)
+    Bar_nonrisk = go.Bar(x=pro_RF[0:N]['Profession'], y=pro_RF[0:N]['counts'],
+                         width=0.5,showlegend=False)
+    fig.add_trace(Bar_risk, row=1, col=1)
+    fig.add_trace(Bar_nonrisk, row=1, col=2)
+    fig.show()
+
+wLabel2 = widgets.Label(value='Top Risk-Non risk Profession')
+display(wLabel2)
+wInt = widgets.IntSlider(value=3, min=0, max=51, step=1)
+wOut = widgets.Output(layout={'border': '1px solid black'})
+wKQ = widgets.interact(top_profession, N=wInt)
+
+def Profession(Job='Software_Developer'):
+    fig = plt.figure(figsize=(13,11))
+    ax1 = fig.add_subplot(2,2,3)
+    ax2 = fig.add_subplot(2,2,4)
+    df = loan_data.groupby(['Profession']).get_group(Job)
+    sns.set_theme(context='talk', style='white', palette='tab10')
+    sns.histplot(data=df, x='Income', hue='Risk_Flag', bins=50, multiple="stack", ax=ax1, color=sns.set_palette('Set1'))
+    sns.histplot(data=df, x='Experience', hue='Risk_Flag', multiple="stack", ax=ax2, color=sns.set_palette('Set2')) 
+    plt.tight_layout()
+    plt.show()
+    
+    
+    fig = make_subplots(rows=1, cols=2, 
+                    subplot_titles=("Tình trạng sở hữu nhà", "Tình trạng hôn nhân"),
+                     specs=[[{"type": "pie"}, {"type": "pie"}]]
+                   )
+
+    df_H = pd.DataFrame(index = df.index)
+    df_H['House ownership'] = 'House ownership'
+    df_H['Family Status'] = 'Family Status'
+    df = pd.concat((df,df_H), axis=1)
+    
+    fig_H = px.sunburst(df, path=['House ownership','House_Ownership', 'Risk_Flag'], color_discrete_sequence=px.colors.qualitative.Dark24)
+    fig2=go.Sunburst(
+    branchvalues='total',
+    ids=fig_H['data'][0]['ids'].tolist(),
+    labels=fig_H['data'][0]['labels'].tolist(),
+    parents=fig_H['data'][0]['parents'].tolist(),
+    values=fig_H['data'][0]['values'].tolist()
+    )
+    
+    fig_F = px.sunburst(df, path=['Family Status','Married/Single', 'Risk_Flag'], color_discrete_sequence=px.colors.qualitative.Dark2)
+    fig3=go.Sunburst(
+    branchvalues='total',
+    ids=fig_F['data'][0]['ids'].tolist(),
+    labels=fig_F['data'][0]['labels'].tolist(),
+    parents=fig_F['data'][0]['parents'].tolist(),
+    values=fig_F['data'][0]['values'].tolist()
+    )
+    
+    fig.add_trace(fig2, row=1, col=1)
+    fig.add_trace(fig3, row=1, col=2)
+    fig.show()
+
+wLabel1 = widgets.Label(value='Risk_Flag theo nghề nghiệp + tình trạng gia đình và sở hữu nhà cửa')
+display(wLabel1)
+wCB = widgets.Dropdown(
+                       options=list(pd.unique(loan_data['Profession'])))
+# wOut1 = widgets.Output(layout={'border': '1px solid black'})
+wKQ = widgets.interact(Profession, Job=wCB)
+
+state = pd.DataFrame(loan_data['STATE'].value_counts().reset_index())
+state.columns = ['State','Counts']
+
+toado = pd.DataFrame({'State':['Uttar_Pradesh','Maharashtra',
+                              'Andhra_Pradesh','West_Bengal',
+                              'Bihar','Tamil_Nadu',
+                              'Madhya_Pradesh','Karnataka',
+                              'Gujarat','Rajasthan'],
+                     'lat':[26.8467,19.7515,15.9129,22.9868,
+                           25.0961,11.1271,22.9734,15.3173,
+                           22.2587,27.0238],
+                     'lon':[80.9462,75.7139,79.7400,87.8550,
+                           85.3131,78.6569,78.6569,75.7139,
+                           71.1924,74.2179]})
+state = pd.merge(state[0:10], toado, on='State')
+
+figMap = px.scatter_mapbox(state, lat="lat", lon="lon",
+                        hover_name="State", 
+                        hover_data=["Counts"],
+                        size="Counts",
+                        zoom=4, height=400, width=250,
+                        color=state['State'],
+                        color_discrete_sequence=px.colors.qualitative.Vivid
+                       )
+figMap.update_layout(mapbox_style="stamen-terrain")
+# fig.update_layout(mapbox_style="open-street-map")
+
+figMap.update_geos(fitbounds="locations", 
+                showcountries=True,
+                countrycolor="Blue")
+
+figMap.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, showlegend=False)
+figMap.show()
+
+
+def state_RF2(state='Uttar_Pradesh'):
+    with wOutput:
+        wOutput.clear_output()
+        data_state = loan_data.groupby(['STATE']).get_group(state)
+        Age = pd.DataFrame(data_state.groupby(['Risk_Flag','Age'])['Risk_Flag'].count())
+        Age.columns = ['count']
+        Age = Age.reset_index()
+        Age_RF = pd.DataFrame(Age.groupby('Risk_Flag')['count'].sum()).reset_index()
+        x0 = Age[Age['Risk_Flag']==0]
+        x1 = Age[Age['Risk_Flag']==1]
+
+        fig = make_subplots(rows=1, cols=2, 
+                                subplot_titles=('Phân bố tuổi tác',"Biểu đồ so sánh theo tuổi"),
+                                specs=[[{"type": "bar"}, {"type": "pie"}]]
+                               )
+
+
+        colors = ['darkorange','limegreen']
+        trace3 = go.Pie(labels=Age_RF['Risk_Flag'], values=Age_RF['count'], hole=0.3, pull=[0.1,0],marker=dict(colors=colors), showlegend=False)
+        fig.add_trace(trace3, 1, 2)
+
+        trace1 = go.Bar(name='RF-1', x=pd.unique(Age['Age']), y=x1['count'], text='1',marker=dict(color="seagreen"))
+        trace2 = go.Bar(name='RF-0', x=pd.unique(Age['Age']), y=x0['count'], text='0',marker=dict(color="darkorange"))
+        fig.append_trace(trace1, 1, 1)
+        fig.append_trace(trace2,1,1)
+        fig.update_layout(barmode='stack',width=750, height=450, 
+    #                       margin={"r":0,"t":0,"l":0,"b":0},
+                          title=f'BIỂU ĐỒ SO SÁNH Risk-Flag TẠI: {state}')
+        fig.show()
+
+        x0 = data_state[data_state['Risk_Flag']==0]
+        x1 = data_state[data_state['Risk_Flag']==1]
+        x0 = pd.DataFrame(x0['Income'])
+        x1 = pd.DataFrame(x1['Income'])
+        fig = go.Figure()
+        fig.add_trace(go.Histogram(x=x0['Income'],marker=dict(color="deepskyblue"), name='Risk-Flag = 0'))
+        fig.add_trace(go.Histogram(x=x1['Income'],marker=dict(color="crimson"), name='Risk-Flag = 1'))
+        fig.update_layout(barmode='overlay',title_text='Phân bố thu nhập cá nhân theo Risk_Flag',width=800, height=400)
+        # Reduce opacity to see both histograms
+        fig.update_traces(opacity=0.75)
+        fig.show()
+
+bState = widgets.Select(description='Chọn State',
+                           options=list(state['State']),
+                           style = {'description_width': 'initial'}
+                          )
+mapWidget = go.FigureWidget(figMap)
+box1 = widgets.VBox([mapWidget, bState])
+
+wOutput = widgets.Output(layout={'border': '0px solid black'})
+
+labelLayout = {'border': '1px solid black', 'background':'green',
+               'justify_content':'center', 'display':'flex'}
+wLabel = widgets.Label(value='                      State', layout=labelLayout)
+
+box2 = widgets.VBox([wLabel, wOutput])
+box = widgets.HBox([box1, box2])
+display(box)
+a = widgets.interactive(state_RF2, state=bState)
+
+# DU DOAN RISK_FLAG
+
+RF = pd.DataFrame(loan_data.groupby(['Risk_Flag'])['Risk_Flag'].count())
+RF.columns = ['count']
+RF = RF.reset_index()
+RF = pd.DataFrame(RF.groupby('Risk_Flag')['count'].sum()).reset_index()
+colors = ['darkorange','limegreen']
+fig = px.pie(RF, values='count', names='Risk_Flag', hole=0.3)
+fig.show()
+
+import csv
+file_data = 'data/Data_Loan.csv'
+row_list = []
+with open (file_data, newline='',encoding='utf8') as input_file:
+	data_file =  csv.reader(input_file, delimiter=',')
+	header = next(data_file)
+	for row in data_file:
+		row_list.append(row)
+row_list = np.array(row_list)
+row_list = row_list.astype(str)
+row_list
+
+LE = LabelEncoder()
+# print(raw_data)
+# X = np.stack([LE.fit_transform(col) for col in raw_data.T[0:6]], axis=1)
+X = np.stack([LE.fit_transform(row_list.T[i]) for i in range(1,12) if (i != 8)], axis=1)
+Y = LE.fit_transform(row_list[:,12])
+print(X.shape)
+print(Y.shape)
+X[0]
+
+Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y,
+                                               test_size=0.2,
+                                               random_state=0)
+
+print(Xtrain.shape,Xtest.shape)
+print(Ytrain.shape,Ytest.shape)
+
+LogReg = LogisticRegression(solver='liblinear')
+LogReg.fit(Xtrain, Ytrain)
+print('Training accuracy:',LogReg.score(Xtrain,Ytrain))
+print('Testing accuracy:',LogReg.score(Xtest,Ytest))
+
+def Predict_RF(Index=0):
+    with wOutput4:
+        wOutput4.clear_output()
+        ds_loai = ['No risk', 'Risk']
+        encode =  LogReg.predict([Xtest[int(Index)]])[0]
+        wOutput4.clear_output()
+        print(f"Mã hóa: {encode} - Ý nghĩa: {ds_loai[encode]}")
+        print(f"Mã hóa: {Ytest[int(Index)]} - Ý nghĩa: {ds_loai[Ytest[int(Index)]]}")
+
+wLabel4 = widgets.Label(value='Dự đoán RF, Nhập 1 số từ 0 đến 50399:')
+display(wLabel4)
+wOutput4 = widgets.Output(layout={'border': '1px solid black'})
+wText4 = widgets.Text(value='0',step=1,description='0-50399')
+# wOut1 = widgets.Output(layout={'border': '1px solid black'})
+wKQ = widgets.interactive(Predict_RF, Index=wText4)
+display(wText4)
+display(wOutput4)
+
+for i in range(len(Ytest)):
+    if Ytest[i]==1:
+        print(i)
+
+predictions1 = LogReg.predict(Xtest)
+print(classification_report(Ytest, predictions1));
+
+# SMOTE
+
+Xtrain, Xtest, Ytrain, Ytest = train_test_split(X, Y,
+                                               test_size=0.2,
+                                               random_state=0)
+print("Number transactions X_train dataset: ", Xtrain.shape)
+print("Number transactions y_train dataset: ", Ytrain.shape)
+print("Number transactions X_test dataset: ", Xtest.shape)
+print("Number transactions y_test dataset: ", Ytest.shape)
+
+print("Before OverSampling, counts of label '1': {}".format(sum(Ytrain == 1)))
+print("Before OverSampling, counts of label '0': {} \n".format(sum(Ytrain == 0)))
+
+sm = SMOTE(random_state = 2)
+X_train_res, y_train_res = sm.fit_sample(Xtrain, Ytrain)
+
+print('After OverSampling, the shape of train_X: {}'.format(X_train_res.shape))
+print('After OverSampling, the shape of train_y: {} \n'.format(y_train_res.shape))
+print("After OverSampling, counts of label '1': {}".format(sum(y_train_res == 1)))
+print("After OverSampling, counts of label '0': {}".format(sum(y_train_res == 0)))
+
+lr2 = LogisticRegression()
+lr2.fit(X_train_res, y_train_res.ravel())
+predictions2 = lr2.predict(Xtest)
+  
+# print classification report
+print(classification_report(Ytest, predictions2))
+
+for i in range(75600):
+    if Ytest[i]==1:
+        print(i)
+
+wLabel4 = widgets.Label(value='Dự đoán RF, Nhập 1 số từ 0 đến 50399:')
+display(wLabel4)
+wOutput4 = widgets.Output(layout={'border': '1px solid black'})
+wText4 = widgets.Text(value='0',step=1,description='0-50399')
+# wOut1 = widgets.Output(layout={'border': '1px solid black'})
+wKQ = widgets.interactive(Predict_RF, Index=wText4)
+display(wText4)
+display(wOutput4)
+
+def Predict_RF(Index=0):
+    with wOutput4:
+        wOutput4.clear_output()
+        ds_loai = ['No risk', 'Risk']
+        encode =  lr2.predict([Xtest[int(Index)]])[0]
+#         wOutput4.clear_output()
+        print(f"Mã hóa của model: {encode} - Ý nghĩa: {ds_loai[encode]}")
+        print(f"Mã hóa của dữ liệu test: {Ytest[int(Index)]} - Ý nghĩa: {ds_loai[Ytest[int(Index)]]}")
+
+from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import ConfusionMatrixDisplay
+
+cm1 = confusion_matrix(Ytest, predictions1)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm1)
+disp.plot()
+
+cm2 = confusion_matrix(Ytest, predictions2)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm2)
+disp.plot()
+
+# Run this app with `python app.py` and
+# visit http://127.0.0.1:8050/ in your web browser.
+
+from dash import Dash, html, dcc
+import plotly.express as px
+import pandas as pd
+
+app = Dash(__name__)
+
+# assume you have a "long-form" data frame
+# see https://plotly.com/python/px-arguments/ for more options
+df = pd.DataFrame({
+    "Fruit": ["Apples", "Oranges", "Bananas", "Apples", "Oranges", "Bananas"],
+    "Amount": [4, 1, 2, 2, 4, 5],
+    "City": ["SF", "SF", "SF", "Montreal", "Montreal", "Montreal"]
+})
+
+fig = px.bar(df, x="Fruit", y="Amount", color="City", barmode="group")
+
+app.layout = html.Div(children=[
+    html.H1(children='Hello Dash'),
+
+    html.Div(children='''
+        Dash: A web application framework for your data.
+    '''),
+
+    dcc.Graph(
+        id='example-graph',
+        figure=fig
+    )
+])
+
+if __name__ == '__main__':
+    app.run_server(debug=False)
+
